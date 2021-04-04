@@ -1,0 +1,76 @@
+#!groovy
+
+properties(
+    [
+        [$class: 'BuildDiscarderProperty', strategy:
+          [$class: 'LogRotator', artifactDaysToKeepStr: '14', artifactNumToKeepStr: '5', daysToKeepStr: '30', numToKeepStr: '60']],
+        pipelineTriggers(
+          [
+              pollSCM('H/15 * * * *'),
+              cron('@daily'),
+          ]
+        )
+    ]
+)
+node {
+    stage('Checkout') {
+        //disable to recycle workspace data to save time/bandwidth
+        deleteDir()
+        checkout scm
+    }
+
+    stage('NPM Install') {
+        withEnv(["NPM_CONFIG_LOGLEVEL=warn"]) {
+         bat 'npm install'
+  
+        }
+    }
+  stage('Lint') {
+        bat 'npm run ng lint'
+      }
+
+    stage('Build') {
+        milestone()
+       bat 'npm run ng build --prod --aot  --progress=false --base-href="/"'
+      
+    }
+
+   // stage('Archive') {
+     //   bat 'tar  -cvzf dist.tar.gz --strip-components=1 dist'
+       // archive 'dist.tar.gz'
+
+    //}
+
+    stage('Deploy') {
+        milestone()
+        echo "Deploying..."
+ftpPublisher alwaysPublishFromMaster: true, continueOnError: false, failOnError: false, publishers: [
+        [configName: 'FtpServer', transfers: [
+            [asciiMode: false, cleanRemote: false, excludes: '', flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: "/Users/05234/nginx-1.16.0/html", remoteDirectorySDF: false, removePrefix: 'dist', sourceFiles: 'dist/']
+        ], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: true]
+    ]
+
+    }
+  stage('Deploy Result'){
+  if(currentBuild.currentResult == "SUCCESS"){
+    //if (isUnix()) {
+  //    sh 'echo "Build Succeded."'
+     // }else{
+      echo "Build Succeded."
+    echo "notification for aymen.braiek with msg jenkins succces"
+    mail to: 'aymen.braiek@biat.com.tn',
+      subject: "Status of pipeline: ${currentBuild.fullDisplayName}",
+      body: "${env.BUILD_URL} has result ${currentBuild.result}"
+    
+  }
+   else  if(currentBuild.currentResult == "FAILURE")
+    {
+      echo "notification for aymen.braiek with msg jenkins failure"
+      mail to: 'aymen.braiek@biat.com.tn',
+      subject: "Status of pipeline: ${currentBuild.fullDisplayName}",
+      body: "${env.BUILD_URL} has result ${currentBuild.result}"
+    }
+     // }
+    }
+    
+}
